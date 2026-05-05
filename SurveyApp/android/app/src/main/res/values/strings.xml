@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Survey App</string>
+    <string name="title_activity_main">Survey App</string>
+    <string name="package_name">com.survey.fieldapp</string>
+    <string name="custom_url_scheme">com.survey.fieldapp</string>
+</resources>

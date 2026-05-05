@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="format-detection" content="telephone=no">
+  <meta name="msapplication-tap-highlight" content="no">
+  <title>Survey App</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"></script>
+  <script src="https://unpkg.com/leaflet-omnivore@0.3.4/leaflet-omnivore.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    /* Safe area สำหรับ iPhone notch */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      overscroll-behavior: none;
+    }
+    /* อนุญาตให้ select ได้ใน input/textarea */
+    input, textarea, select {
+      -webkit-user-select: auto;
+      user-select: auto;
+    }
+    #map { height: 100%; width: 100%; z-index: 1; background-color: #242424; }
+
+    /* ปรับตำแหน่งให้รองรับ safe area */
+    #menuToggleBtn {
+      position: absolute;
+      top: calc(15px + env(safe-area-inset-top));
+      right: calc(15px + env(safe-area-inset-right));
+      z-index: 1001;
+      border-radius: 50%;
+      width: 45px;
+      height: 45px;
+    }
+    .leaflet-top.leaflet-right { top: calc(70px + env(safe-area-inset-top)) !important; right: calc(0px + env(safe-area-inset-right)) !important; }
+    .leaflet-bottom.leaflet-right { bottom: calc(20px + env(safe-area-inset-bottom)) !important; right: calc(10px + env(safe-area-inset-right)) !important; }
+    .control-panel {
+      position: absolute;
+      top: calc(15px + env(safe-area-inset-top));
+      right: calc(15px + env(safe-area-inset-right));
+      z-index: 1002;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      width: 300px;
+      max-width: calc(100vw - 30px);
+      max-height: calc(100vh - 30px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+      overflow-y: auto;
+      display: none;
+    }
+    #toast-container {
+      position: fixed;
+      bottom: calc(20px + env(safe-area-inset-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      display: none;
+      min-width: 200px;
+      text-align: center;
+    }
+    .btn-tracking-on { background-color: #ff4757 !important; color: white !important; border: none; }
+    .pulse-icon { animation: pulse-red 2s infinite; }
+    @keyframes pulse-red {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+    }
+
+    /* Checkbox & List Styles */
+    .big-checkbox { width: 25px !important; height: 25px !important; cursor: pointer; flex-shrink: 0; accent-color: #007bff; }
+    .drive-item { display: flex; align-items: center; padding: 10px 12px !important; margin-bottom: 5px; background: #fff; border-radius: 6px !important; border-left: 4px solid #007bff !important; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .modal-file-item { cursor: pointer; transition: background 0.2s; border-bottom: 1px solid #eee; }
+    .modal-file-item:hover { background-color: #f0f7ff; }
+    .preview-img { width: 60px; height: 60px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; }
+
+    /* Splash Screen */
+    #splash-screen {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(135deg, #198754, #20c997);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      transition: opacity 0.5s;
+    }
+    #splash-screen.hide { opacity: 0; pointer-events: none; }
+    .splash-icon { font-size: 80px; margin-bottom: 20px; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+
+    /* สไตล์สำหรับป้ายชื่อ KML ให้เหมือนใน Google Earth */
+    .kml-text-label {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      font-weight: bold !important;
+      color: #000 !important;
+      text-shadow: 1px 1px 2px #fff, -1px -1px 2px #fff, 1px -1px 2px #fff, -1px 1px 2px #fff !important;
+      font-size: 13px !important;
+    }
+
+    /* ปรับขนาด popup ให้เหมาะกับมือถือ */
+    .leaflet-popup-content { margin: 13px 15px; }
+    .leaflet-popup-content-wrapper { border-radius: 10px; }
+  </style>
+</head>
+<body>
+
+  <!-- Splash Screen -->
+  <div id="splash-screen">
+    <div class="splash-icon"><i class="fa-solid fa-satellite-dish"></i></div>
+    <h3 class="fw-bold">Survey App</h3>
+    <p class="mb-0">ระบบสำรวจภาคสนาม</p>
+    <div class="spinner-border spinner-border-sm mt-3" role="status"></div>
+  </div>
+
+  <button id="menuToggleBtn" class="btn btn-light shadow-sm" onclick="togglePanel()">
+    <i class="fa-solid fa-bars fs-5"></i>
+  </button>
+
+  <div class="control-panel" id="mainPanel">
+    <button type="button" class="btn-close float-end mt-1" aria-label="Close" onclick="togglePanel()"></button>
+    <h6 class="mb-3 fw-bold text-success"><i class="fa-solid fa-satellite"></i> ระบบสำรวจภาคสนาม</h6>
+
+    <div class="d-flex gap-2 mb-3">
+      <button id="trackBtn" class="btn btn-outline-primary w-75 shadow-sm fw-bold" onclick="toggleTracking()">
+        <i class="fa-solid fa-person-walking"></i> เริ่มเดินตาม (Live)
+      </button>
+      <button class="btn btn-secondary w-25 shadow-sm" onclick="resetNorth()"><i class="fa-regular fa-compass"></i></button>
+    </div>
+
+    <div class="mb-3">
+      <p class="mb-1 fw-bold text-primary" style="font-size: 13px;"><i class="fa-solid fa-file-import"></i> นำเข้า KML/KMZ (บันทึกลง Cloud)</p>
+      <input type="file" id="kmlInput" class="form-control form-control-sm mb-1" accept=".kml,.kmz" multiple onchange="handleFileUpload(this)">
+    </div>
+
+    <hr>
+    <p class="mb-1 fw-bold" style="font-size: 13px;">ส่งออกข้อมูล (Export)</p>
+    <div class="d-flex gap-2">
+      <button class="btn btn-warning btn-sm w-50 fw-bold" onclick="exportData('CSV')">CSV</button>
+      <button class="btn btn-info text-white btn-sm w-50 fw-bold" onclick="exportData('GeoJSON')">GeoJSON</button>
+    </div>
+
+    <div class="mb-3 mt-3">
+      <p class="mb-1 fw-bold text-success" style="font-size: 13px;"><i class="fa-solid fa-cloud"></i> Google Drive (KML_KMZ)</p>
+
+      <div class="d-flex gap-2 mb-2">
+        <button class="btn btn-primary btn-sm w-100 mb-2" onclick="fetchKmlFromDrive()">
+          <i class="fa-solid fa-cloud-arrow-down"></i> ดึงข้อมูลจาก Google Drive
+        </button>
+        <label class="btn btn-outline-primary btn-sm fw-bold shadow-sm mb-2">
+          <i class="fa-solid fa-upload"></i> อัปโหลด
+          <input type="file" id="uploadToDriveInput" accept=".kml,.kmz" style="display:none;" onchange="uploadFileDirectToDrive(this)">
+        </label>
+      </div>
+
+      <button class="btn btn-outline-danger btn-sm w-100 fw-bold shadow-sm mt-2" onclick="clearAllFilesList()">
+          <i class="fa-solid fa-broom"></i> ล้างรายการไฟล์ทั้งหมด
+      </button>
+
+      <div id="driveKmlList" class="list-group shadow-sm mt-2" style="max-height: 200px; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="alert alert-success shadow fw-bold"><span id="toast-msg"></span></div>
+  <div id="map"></div>
+
+  <script>
+    // ============================================================
+    //  SURVEY APP - Mobile Version (Capacitor)
+    // ============================================================
+
+    // *** ใส่ URL ของ Apps Script Web App ***
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwXGv3nDhAKzQ1L2yLyvn_R9fAiR21oSbiJNFg5x_tN0fgsrzTvjgnn4aa0IaxNdZ56KQ/exec";
+
+    // ตรวจสอบว่ารันใน Capacitor (มือถือ) หรือเบราว์เซอร์
+    const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+    // ซ่อน splash screen หลังโหลดเสร็จ
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        document.getElementById('splash-screen').classList.add('hide');
+        setTimeout(function() {
+          document.getElementById('splash-screen').style.display = 'none';
+          // เรียกขอสิทธิ์ GPS ตอนเปิดแอปเลย (เฉพาะ native)
+          if (isNative) requestLocationPermission();
+        }, 500);
+      }, 1500);
+    });
+
+    // ขอสิทธิ์ GPS บน native
+    async function requestLocationPermission() {
+      try {
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) {
+          await window.Capacitor.Plugins.Geolocation.requestPermissions();
+        }
+      } catch (e) {
+        console.warn("Permission request failed:", e);
+      }
+    }
+
+    // ============================================================
+    // แผนที่และเลเยอร์
+    // ============================================================
+    var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' });
+    var gMaps = L.tileLayer('https://mt1.google.com/vt/lyrs=r&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: '© Google Maps' });
+    var gRoadsOnly = L.tileLayer('https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: '© Google Roads' });
+    var gSatellite = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: '© Google Satellite' });
+    var gHybrid = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: '© Google Hybrid' });
+    var gTerrainOnly = L.tileLayer('https://mt1.google.com/vt/lyrs=t&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: '© Google Terrain Only' });
+    var gTerrain = L.tileLayer('https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: '© Google Terrain' });
+    var gTraffic = L.tileLayer('https://mt1.google.com/vt/lyrs=m@221097413,traffic&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: '© Google Traffic' });
+    var watercolor = L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/watercolor/{z}/{x}/{y}.jpg', { maxZoom: 16, attribution: '© Stamen' });
+
+    var map = L.map('map', {
+      zoomControl: false, rotate: true, touchRotate: true, layers: [gHybrid]
+    }).setView([13.7563, 100.5018], 6);
+
+    var baseMaps = {
+      "Google Hybrid": gHybrid, "Google Satellite": gSatellite, "Google Standard": gMaps,
+      "Google Terrain": gTerrain, "OpenStreetMap": osm, "Watercolor": watercolor
+    };
+    var overlayMaps = {
+      "เส้นถนน (Google Roads)": gRoadsOnly, "สภาพจราจร (Google Traffic)": gTraffic, "ภูมิประเทศ (Terrain Only)": gTerrainOnly
+    };
+
+    L.control.layers(baseMaps, overlayMaps, { position: 'topright', collapsed: true }).addTo(map);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    var isTracking = false;
+    var userMarker = null;
+    var watchId = null;
+    var capacitorWatchId = null;
+    var kmlLayers = [];
+    var currentTempMarker = null;
+    var currentImages = [];
+
+    // ============================================================
+    // Backend Communication (CORS-safe)
+    // ============================================================
+    // *** ใช้ Content-Type: text/plain เพื่อหลีกเลี่ยง CORS preflight ***
+    // Apps Script doPost ยังอ่าน e.postData.contents ได้เหมือนเดิม
+    async function callBackend(action, payload) {
+      try {
+        const response = await fetch(WEB_APP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: action, payload: payload }),
+          redirect: "follow"
+        });
+        return await response.json();
+      } catch (error) {
+        console.error("Error calling backend:", error);
+        showToast("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์", "danger");
+        return { success: false, message: error.toString() };
+      }
+    }
+
+    function togglePanel() {
+      var p = document.getElementById('mainPanel');
+      p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'block' : 'none';
+    }
+
+    function resetNorth() { if(map.setBearing) map.setBearing(0); }
+
+    // ============================================================
+    // GPS Tracking - ใช้ Capacitor Geolocation บน native
+    // ============================================================
+    async function toggleTracking() {
+      var btn = document.getElementById('trackBtn');
+      if (!isTracking) {
+        isTracking = true;
+        btn.innerHTML = '<i class="fa-solid fa-stop-circle pulse-icon"></i> หยุดเดินตาม';
+        btn.classList.replace('btn-outline-primary', 'btn-tracking-on');
+        await startWatchPosition();
+      } else {
+        isTracking = false;
+        btn.innerHTML = '<i class="fa-solid fa-person-walking"></i> เริ่มเดินตาม (Live)';
+        btn.classList.replace('btn-tracking-on', 'btn-outline-primary');
+        stopWatchPosition();
+      }
+    }
+
+    async function startWatchPosition() {
+      // ใช้ Capacitor Geolocation บน native (ดีกว่า, ไม่ติด permission)
+      if (isNative && window.Capacitor.Plugins.Geolocation) {
+        try {
+          const Geolocation = window.Capacitor.Plugins.Geolocation;
+          const perm = await Geolocation.requestPermissions();
+          if (perm.location !== 'granted') {
+            showToast("กรุณาอนุญาตการเข้าถึงตำแหน่ง", "danger");
+            return;
+          }
+          capacitorWatchId = await Geolocation.watchPosition({
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }, function(pos, err) {
+            if (err) { console.error(err); return; }
+            updateUserLocation(pos.coords.latitude, pos.coords.longitude);
+          });
+        } catch (e) {
+          console.error("Capacitor GPS error:", e);
+          showToast("ไม่สามารถเข้าถึง GPS ได้", "danger");
+        }
+      } else {
+        // Fallback สำหรับเบราว์เซอร์
+        if (navigator.geolocation) {
+          watchId = navigator.geolocation.watchPosition(function(pos) {
+            updateUserLocation(pos.coords.latitude, pos.coords.longitude);
+          }, function(err) {
+            console.error(err);
+            showToast("ไม่สามารถเข้าถึง GPS ได้", "danger");
+          }, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+        }
+      }
+    }
+
+    async function stopWatchPosition() {
+      if (isNative && capacitorWatchId) {
+        await window.Capacitor.Plugins.Geolocation.clearWatch({ id: capacitorWatchId });
+        capacitorWatchId = null;
+      }
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+    }
+
+    function updateUserLocation(lat, lng) {
+      var latlng = [lat, lng];
+      if (!userMarker) {
+        userMarker = L.circleMarker(latlng, { radius: 8, fillColor: "#3388ff", color: "#fff", weight: 2, fillOpacity: 0.8 }).addTo(map);
+      } else {
+        userMarker.setLatLng(latlng);
+      }
+      if (isTracking) {
+        map.panTo(latlng, { animate: true, duration: 0.5, easeLinearity: 0.25 });
+      }
+    }
+
+    // ============================================================
+    // KML / Google Drive Functions
+    // ============================================================
+    function fetchKmlFromDrive() {
+      var allFilesDiv = document.getElementById('driveAllFilesList');
+      allFilesDiv.innerHTML = '<div class="text-center p-4"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><br>กำลังดึงข้อมูล...</div>';
+
+      var fileModal = new bootstrap.Modal(document.getElementById('fileSelectorModal'));
+      fileModal.show();
+
+      callBackend('getKmlFiles', {})
+        .then(res => {
+          if (res.success) {
+            allFilesDiv.innerHTML = '';
+            if (res.files.length === 0) {
+              allFilesDiv.innerHTML = '<div class="p-3 text-center text-muted">ไม่พบไฟล์ในโฟลเดอร์ KML_KMZ</div>';
+              return;
+            }
+
+            var confirmBtn = document.getElementById('confirmFileSelectionBtn');
+            var newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+            res.files.forEach(function(file) {
+              var item = document.createElement('div');
+              item.className = 'p-3 border-bottom d-flex align-items-center modal-file-item';
+              item.style.cursor = 'pointer';
+
+              var checkbox = document.createElement('input');
+              checkbox.type = 'checkbox';
+              checkbox.className = 'form-check-input me-3';
+              checkbox.style.width = '20px';
+              checkbox.style.height = '20px';
+              checkbox.style.cursor = 'pointer';
+
+              var label = document.createElement('span');
+              label.innerHTML = '<i class="fa-solid fa-file-code text-primary me-2"></i>' + file.name;
+              label.className = 'flex-grow-1';
+
+              item.appendChild(checkbox);
+              item.appendChild(label);
+
+              item.onclick = function(e) {
+                if (e.target !== checkbox) checkbox.checked = !checkbox.checked;
+                item.style.backgroundColor = checkbox.checked ? '#e8f4ff' : '';
+              };
+
+              item.fileData = file;
+              item.checkbox = checkbox;
+              allFilesDiv.appendChild(item);
+            });
+
+            newConfirmBtn.onclick = function() {
+              var items = allFilesDiv.getElementsByClassName('modal-file-item');
+              var selectedCount = 0;
+              for (var i = 0; i < items.length; i++) {
+                if (items[i].checkbox.checked) {
+                  addFileToRedBox(items[i].fileData);
+                  selectedCount++;
+                }
+              }
+              if (selectedCount > 0) {
+                fileModal.hide();
+              } else {
+                showToast("กรุณาเลือกอย่างน้อย 1 ไฟล์", "warning");
+              }
+            };
+
+          } else {
+            allFilesDiv.innerHTML = '<div class="p-3 text-danger">' + res.message + '</div>';
+          }
+        });
+    }
+
+    function addFileToRedBox(file) {
+      var listDiv = document.getElementById('driveKmlList');
+      var existingId = "file-" + file.name.replace(/[^a-zA-Z0-9]/g, "");
+      if (document.getElementById(existingId)) {
+        showToast("ไฟล์นี้อยู่ในรายการแล้ว", "warning");
+        return;
+      }
+
+      var item = document.createElement('div');
+      item.id = existingId;
+      item.className = 'list-group-item drive-item';
+
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'form-check-input big-checkbox';
+
+      var label = document.createElement('span');
+      label.className = 'flex-grow-1 ms-3 fw-bold';
+      label.innerHTML = file.name;
+      label.style.fontSize = '12px';
+
+      var initColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+      var colorPicker = document.createElement('input');
+      colorPicker.type = 'color';
+      colorPicker.className = 'form-control form-control-color p-0 border-0 ms-2 me-2';
+      colorPicker.style.width = '25px';
+      colorPicker.style.height = '25px';
+      colorPicker.style.cursor = 'pointer';
+      colorPicker.value = initColor;
+      colorPicker.title = "เปลี่ยนสีข้อมูล";
+
+      colorPicker.oninput = function() {
+        var newColor = this.value;
+        kmlLayers.forEach(function(layer) {
+          if (layer.options && layer.options.layerName === file.name) {
+            var updateColorsDeep = function(targetLayer) {
+              if (targetLayer.eachLayer) {
+                targetLayer.eachLayer(updateColorsDeep);
+              }
+              if (targetLayer instanceof L.CircleMarker) {
+                targetLayer.setStyle({ fillColor: newColor });
+              } else if (targetLayer.setStyle && !(targetLayer instanceof L.Marker)) {
+                targetLayer.setStyle({ color: newColor, fillColor: newColor });
+              }
+            };
+            updateColorsDeep(layer);
+          }
+        });
+      };
+
+      var deleteBtn = document.createElement('i');
+      deleteBtn.className = 'fa-solid fa-xmark text-danger ms-2';
+      deleteBtn.style.cursor = 'pointer';
+      deleteBtn.onclick = function() {
+        if (checkbox.checked) removeSingleLayer(file.name);
+        item.remove();
+      };
+
+      checkbox.onchange = function() {
+        if (this.checked) {
+          processDriveFile(file, colorPicker.value);
+        } else {
+          removeSingleLayer(file.name);
+        }
+      };
+
+      item.appendChild(checkbox);
+      item.appendChild(label);
+      item.appendChild(colorPicker);
+      item.appendChild(deleteBtn);
+      listDiv.appendChild(item);
+      showToast("เพิ่มไฟล์แล้ว ติ๊กที่กล่องเพื่อแสดงผล", "info");
+    }
+
+    function processDriveFile(file, selectedColor) {
+      showToast("กำลังโหลด: " + file.name, "primary");
+
+      var renderLayer = function(txt) {
+        var themeColor = selectedColor || '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+
+        var customLayer = L.geoJson(null, {
+          pointToLayer: function (feature, latlng) {
+            var marker = L.circleMarker(latlng, {
+              radius: 5,
+              fillColor: themeColor,
+              color: '#ffffff',
+              weight: 1.5,
+              fillOpacity: 0.9
+            });
+
+            if (feature.properties && feature.properties.name) {
+              marker.bindTooltip(feature.properties.name, {
+                permanent: true,
+                direction: 'right',
+                className: 'kml-text-label',
+                offset: [5, 0]
+              });
+            }
+            return marker;
+          },
+          style: function(feature) {
+            return { color: themeColor, weight: 3, opacity: 0.8, fillColor: themeColor, fillOpacity: 0.2 };
+          }
+        });
+
+        var newLayer = omnivore.kml.parse(txt, null, customLayer);
+
+        newLayer.options.layerName = file.name;
+        newLayer.addTo(map);
+        kmlLayers.push(newLayer);
+
+        newLayer.on('ready', function() {
+          map.fitBounds(newLayer.getBounds(), { padding: [30, 30] });
+        });
+      };
+
+      if (file.type === 'kml') {
+        renderLayer(file.content);
+      } else if (file.type === 'kmz') {
+        var byteString = atob(file.content);
+        var ab = new ArrayBuffer(byteString.length);
+        var ia = new Uint8Array(ab);
+        for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        JSZip.loadAsync(ab).then(function(z) {
+          var kmlFile = Object.keys(z.files).find(f => f.endsWith('.kml'));
+          return z.file(kmlFile).async("string");
+        }).then(renderLayer);
+      }
+    }
+
+    function removeSingleLayer(name) {
+      for (var i = kmlLayers.length - 1; i >= 0; i--) {
+        if (kmlLayers[i].options && kmlLayers[i].options.layerName === name) {
+          map.removeLayer(kmlLayers[i]);
+          kmlLayers.splice(i, 1);
+        }
+      }
+    }
+
+    function clearAllFilesList() {
+      var listDiv = document.getElementById('driveKmlList');
+      if (listDiv.children.length === 0 && kmlLayers.length === 0) {
+        showToast("ไม่มีรายการไฟล์ให้ลบ", "warning");
+        return;
+      }
+
+      if(confirm("ต้องการล้างรายการไฟล์ทั้งหมดออกจากหน้าต่างนี้ใช่หรือไม่?")) {
+        kmlLayers.forEach(function(layer) { map.removeLayer(layer); });
+        kmlLayers = [];
+        listDiv.innerHTML = '';
+        showToast("ล้างรายการไฟล์เรียบร้อยแล้ว", "info");
+      }
+    }
+
+    // อัปโหลดไฟล์ KML ตรงไปยัง Google Drive
+    function uploadFileDirectToDrive(input) {
+      var file = input.files[0];
+      if (!file) return;
+
+      showToast("กำลังอัปโหลด: " + file.name, "primary");
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        callBackend('uploadKml', { fileName: file.name, base64Data: e.target.result })
+          .then(res => {
+            showToast(res.message || "อัปโหลดเสร็จสิ้น", res.success ? "success" : "danger");
+            input.value = ""; // เคลียร์ input
+          });
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // นำเข้า KML/KMZ จากเครื่อง (เลือกหลายไฟล์)
+    function handleFileUpload(input) {
+      var files = input.files;
+      if (!files || files.length === 0) return;
+
+      Array.from(files).forEach(function(file) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var ext = file.name.split('.').pop().toLowerCase();
+          // อัปโหลดไป Drive ก่อน
+          callBackend('uploadKml', { fileName: file.name, base64Data: e.target.result })
+            .then(res => {
+              if (res.success) {
+                showToast("อัปโหลด " + file.name + " สำเร็จ", "success");
+                // เพิ่มลงรายการเลย
+                var content;
+                if (ext === 'kml') {
+                  // อ่านเป็น text
+                  var textReader = new FileReader();
+                  textReader.onload = function(ev) {
+                    addFileToRedBox({ name: file.name, type: 'kml', content: ev.target.result });
+                  };
+                  textReader.readAsText(file);
+                } else {
+                  // KMZ ใช้ base64
+                  var rawBase64 = e.target.result.split(',')[1];
+                  addFileToRedBox({ name: file.name, type: 'kmz', content: rawBase64 });
+                }
+              } else {
+                showToast(res.message || "อัปโหลดล้มเหลว", "danger");
+              }
+            });
+        };
+        reader.readAsDataURL(file);
+      });
+      input.value = "";
+    }
+
+    // ============================================================
+    // Survey Logic - คลิก/แตะแผนที่เพื่อเพิ่มจุดสำรวจ
+    // ============================================================
+    map.on('click', function(e) {
+      if (currentTempMarker) map.removeLayer(currentTempMarker);
+      currentImages = [];
+
+      var lat = e.latlng.lat.toFixed(6);
+      var lng = e.latlng.lng.toFixed(6);
+      var safeId = lat.toString().replace(/[\.\-]/g, '') + lng.toString().replace(/[\.\-]/g, '');
+
+      currentTempMarker = L.marker(e.latlng).addTo(map);
+      var navLink = "https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lng;
+
+      var content = '<div style="min-width:250px; max-height:450px; overflow-y:auto;">' +
+        '<h6 class="text-primary fw-bold mb-2">สำรวจพิกัด: ' + lat + ', ' + lng + '</h6>' +
+        '<div class="mb-2">' +
+           '<a href="' + navLink + '" target="_blank" class="btn btn-primary btn-sm w-100 shadow-sm text-white">' +
+           '<i class="fa-solid fa-location-arrow"></i> นำทางไปยังจุดนี้</a>' +
+        '</div>' +
+        '<label class="fw-bold mb-1" style="font-size:12px;">รหัสการใช้ที่ดิน:</label>' +
+        '<select id="popCode_' + safeId + '" class="form-select form-select-sm mb-2">' +
+          '<optgroup label="U - เมืองและสิ่งก่อสร้าง">' +
+            '<option value="U1">U1-ตัวเมืองและย่านการค้า</option><option value="U2">U2-หมู่บ้าน</option>' +
+            '<option value="U3">U3-สถานที่ราชการ</option><option value="U4">U4-สถานีคมนาคม</option>' +
+            '<option value="U405">U405-ถนนขนาด 4 เมตรขึ้นไป</option><option value="U406">U406-ทางรถไฟ</option>' +
+            '<option value="U5">U5-พื้นที่อุตสาหกรรม</option><option value="U6">U6-สิ่งปลูกสร้างอื่นๆ</option>' +
+            '<option value="U7">U7-สนามกอล์ฟ</option>'+
+          '</optgroup>' +
+          '<optgroup label="A - เกษตรกรรม">' +
+            '<option value="A0">A0-เกษตรผสมผสาน</option><option value="A1">A1-พื้นที่นา</option>' +
+            '<option value="A2">A2-พืชไร่</option><option value="A3">A3-ไม้ยืนต้น</option>' +
+            '<option value="A4">A4-ไม้ผล</option><option value="A5">A5-พืชสวน</option>' +
+            '<option value="A6">A6-ไร่หมุนเวียน</option><option value="A7">A7-ทุ่งหญ้าเลี้ยงสัตว์และโรงเรือน</option><option value="A8">A8-พืชน้ำ</option><option value="A9">A9-สถานที่เพาะเลี้ยงสัตว์น้ำ</option>'+
+          '</optgroup>' +
+          '<optgroup label="F - ป่าไม้">' +
+            '<option value="F1">F1-ป่าไม่ผลัดใบ</option><option value="F2">F2-ป่าผลัดใบ</option>' +
+            '<option value="F3">F3-ป่าชายเลน</option><option value="F4">F4-ป่าพรุ</option><option value="F5">F5-ป่าปลูก</option><option value="F6">F6-วนเกษตร</option><option value="F7">F7-ป่าชายหาด</option>' +
+          '</optgroup>' +
+          '<optgroup label="W - แหล่งน้ำ">' +
+            '<option value="W1">W1-แหล่งน้ำธรรมชาติ</option><option value="W2">W2-แหล่งน้ำที่สร้างขึ้น</option>' +
+          '</optgroup>' +
+          '<optgroup label="M - เบ็ดเตล็ด">' +
+            '<option value="M1">M1-ทุ่งหญ้าและไม้ละเมาะ</option><option value="M2">M2-พื้นที่ลุ่ม</option>' +
+            '<option value="M3">M3-เหมืองแร่ บ่อขุด</option><option value="M4">M4-พื้นที่เบ็ดเตล็ดอื่นๆ</option><option value="M5">M5-นาเกลือ</option><option value="M6">M6-หาดทราย</option><option value="M7">M7-ที่ทิ้งขยะ</option>' +
+          '</optgroup>' +
+        '</select>' +
+        '<label class="fw-bold mb-1" style="font-size:12px;">จัดการรูปภาพ:</label>' +
+        '<div class="d-flex gap-2 mb-2">' +
+          '<label class="btn btn-outline-primary btn-sm flex-grow-1"><i class="fa-solid fa-camera"></i> ถ่ายรูป' +
+          '<input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleImageSelect(event, \'' + safeId + '\')"></label>' +
+          '<label class="btn btn-outline-secondary btn-sm flex-grow-1"><i class="fa-solid fa-images"></i> คลังภาพ' +
+          '<input type="file" accept="image/*" multiple style="display:none;" onchange="handleImageSelect(event, \'' + safeId + '\')"></label>' +
+        '</div>' +
+        '<div id="imgPreview_' + safeId + '" class="d-flex flex-wrap gap-1"></div>' +
+        '<textarea id="popNote_' + safeId + '" class="form-control form-control-sm mb-2" placeholder="หมายเหตุ..." rows="2"></textarea>' +
+        '<div class="d-flex gap-2 mt-2">' +
+          '<button class="btn btn-success btn-sm flex-grow-1 fw-bold" onclick="sendDataWithImages(\'' + lat + '\',\'' + lng + '\',\'' + safeId + '\', this)">บันทึก</button>' +
+          '<button class="btn btn-danger btn-sm px-3" onclick="map.removeLayer(currentTempMarker)"><i class="fa-solid fa-trash"></i></button>' +
+        '</div>' +
+      '</div>';
+      currentTempMarker.bindPopup(content, { maxWidth: 320 }).openPopup();
+    });
+
+    function handleImageSelect(event, safeId) {
+      var files = event.target.files;
+      var preview = document.getElementById('imgPreview_' + safeId);
+      Array.from(files).forEach(file => {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var img = new Image();
+          img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var max_width = 800;
+            var scale = max_width / img.width;
+            canvas.width = max_width; canvas.height = img.height * scale;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            var resizedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+            currentImages.push(resizedBase64);
+            var imgThumb = document.createElement('img');
+            imgThumb.src = resizedBase64; imgThumb.className = 'preview-img';
+            preview.appendChild(imgThumb);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function sendDataWithImages(lat, lng, safeId, btn) {
+      var code = document.getElementById("popCode_" + safeId).value;
+      var note = document.getElementById("popNote_" + safeId).value;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+      callBackend('saveData', {lat: lat, lng: lng, code: code, note: note, images: currentImages})
+        .then(res => {
+          if(res && res.success) {
+            showToast(res.message, "success");
+            if (currentTempMarker) map.removeLayer(currentTempMarker);
+            var savedMarker = L.marker([lat, lng]).addTo(map);
+            savedMarker.bindTooltip(code, { permanent: true, direction: 'top', className: 'fw-bold text-danger' }).openTooltip();
+            if (savedMarker._icon) savedMarker._icon.style.filter = "hue-rotate(140deg)";
+            savedMarker.bindPopup(`<div class='text-center'><b>บันทึกแล้ว: ${code}</b><br><button class='btn btn-danger btn-sm mt-2' onclick="deleteFromServer('${lat}','${lng}', this)">ลบข้อมูล</button></div>`);
+          } else {
+            btn.disabled = false;
+            btn.innerHTML = 'บันทึก';
+            showToast((res && res.message) || "บันทึกไม่สำเร็จ", "danger");
+          }
+        });
+    }
+
+    function deleteFromServer(lat, lng, btn) {
+      if(!confirm("ยืนยันลบข้อมูลออกจาก Sheet?")) return;
+
+      callBackend('deleteData', {lat: lat, lng: lng})
+        .then(res => {
+          showToast(res.message, "warning");
+          map.eachLayer(function(l) {
+            if (l instanceof L.Marker && l.getLatLng().lat.toFixed(6) == lat) map.removeLayer(l);
+          });
+        });
+    }
+
+    // ============================================================
+    // Export Functions - ใช้ callBackend ทั้งหมด (ไม่ใช้ google.script.run)
+    // ============================================================
+    function exportData(type) {
+      showToast("กำลังเตรียมไฟล์...", "primary");
+      var action = (type === 'CSV') ? 'exportCSV' : 'exportGeoJSON';
+      callBackend(action, {})
+        .then(res => {
+          if (res && res.success) {
+            downloadFile(res, type);
+          } else {
+            showToast((res && res.message) || "Export ไม่สำเร็จ", "danger");
+          }
+        });
+    }
+
+    function downloadFile(res, type) {
+      var content = res.csvText || res.geojsonText;
+      var filename = (type === 'CSV') ? 'survey.csv' : 'survey.geojson';
+      var mimeType = (type === 'CSV') ? 'text/csv' : 'application/json';
+
+      // บนมือถือ Capacitor: ใช้ Web Share API ถ้าได้, ไม่งั้น download link
+      var blob = new Blob([content], { type: mimeType });
+      if (navigator.share && isNative) {
+        try {
+          var file = new File([blob], filename, { type: mimeType });
+          navigator.share({ files: [file], title: 'Survey Export' })
+            .catch(() => fallbackDownload(blob, filename));
+        } catch (e) {
+          fallbackDownload(blob, filename);
+        }
+      } else {
+        fallbackDownload(blob, filename);
+      }
+    }
+
+    function fallbackDownload(blob, filename) {
+      var link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast("ดาวน์โหลด " + filename + " เรียบร้อย", "success");
+    }
+
+    function showToast(msg, type) {
+      var t = document.getElementById('toast-container');
+      document.getElementById('toast-msg').innerText = msg;
+      var validTypes = ['success', 'danger', 'warning', 'info', 'primary'];
+      var alertType = validTypes.includes(type) ? type : 'primary';
+      t.className = `alert alert-${alertType} shadow fw-bold`;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
+  </script>
+
+  <div class="modal fade" id="fileSelectorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-file-circle-plus"></i> เลือกไฟล์ข้อมูลจาก Drive</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-0" id="driveAllFilesList"></div>
+        <div class="modal-footer d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="button" class="btn btn-success btn-sm fw-bold" id="confirmFileSelectionBtn">
+            <i class="fa-solid fa-check"></i> ยืนยันการเลือก
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

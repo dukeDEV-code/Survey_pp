@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+package-lock.json.bak
+
+# Capacitor build outputs
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/.idea/
+android/*.iml
+android/app/release/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# Keystores (อย่า commit!)
+*.keystore
+*.jks
