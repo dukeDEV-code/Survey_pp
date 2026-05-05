@@ -26,10 +26,6 @@ jobs:
         working-directory: SurveyApp
         run: npm install
 
-      - name: Build web assets
-        working-directory: SurveyApp
-        run: npm run build
-
       - name: Sync Capacitor
         working-directory: SurveyApp
         run: npx cap sync android
