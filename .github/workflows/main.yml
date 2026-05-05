@@ -26,6 +26,14 @@ jobs:
         working-directory: SurveyApp
         run: npm install
 
+      - name: Install capacitor-assets
+        working-directory: SurveyApp
+        run: npm install @capacitor/assets --save-dev
+
+      - name: Generate app icon
+        working-directory: SurveyApp
+        run: npx capacitor-assets generate --android
+
       - name: Sync Capacitor
         working-directory: SurveyApp
         run: npx cap sync android
